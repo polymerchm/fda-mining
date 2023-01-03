@@ -138,6 +138,19 @@ def main():
                         dataPath = os.path.join(PDF_FOLDER,k_number)
                         if not os.path.exists(dataPath):        
                             os.mkdir(dataPath)
+                        # metadata file
+                        product_code = hit.get('product_code','???')
+                        device_name = hit.get('device_name','no name')
+                        advisory_committee = hit.get('advisory_committee', 'XX')
+                        advisory_committee_desc = hit.get('advisory_committee_description', 'no description')
+                        applicant = hit.get('applicant', 'no applicant')
+                        with open(os.path.join(dataPath, 'data.txt'),'w') as txFH:
+                            txFH.write(f'Product Code: {product_code}\n')
+                            txFH.write(f'Applicant:    {applicant}\n')
+                            txFH.write(f'Device Name:  {device_name}\n')
+                            txFH.write(f'Advisory Committee ({advisory_committee}): {advisory_committee_desc}\n ') 
+                        
+                        #get the summary pdf and save it
                         response = requests.get(pdf_url)
                         pdfPath = os.path.join(dataPath,f"{k_number}.pdf")
                         pdf = open(pdfPath, 'wb') 
