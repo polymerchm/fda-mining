@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["-o be.txt", "-l 50"],
+            "args": ["-o be.txt", "-l 5"],
             "justMyCode": true
         }
     ]
