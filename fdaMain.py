@@ -66,11 +66,12 @@ default_limit=500
 
 killed = False
 
-def catchSIGINT(signum,frame):
-    global killed
-    print('SIGINT received.   Will Stop after this cycle')
-    killed = True
+
     
+def getYear(k):
+    match = re.search('K(\d\d)\d{4}',k)
+    twoDigits = match.groups()[0]
+    return ('19' if int(twoDigits) > 75 else '20') + twoDigits
     
 
 def main(): 
@@ -85,24 +86,18 @@ def main():
     parser.add_argument('-l', '--limit',   action='store', default=default_limit, help='set number of hits maximum')
     parser.add_argument('-o', '--output', action='store', default='stdout', help='file to output to')
     parser.add_argument('-a', '--append', action='store_true', help='if output file not stdout, append to the file rather tan a new one')
+    parser.add_argument('--log', action='store', default='fda_mine.log', help='logfile')
     args = parser.parse_args()
     
    
     
     LOGGER = logging.getLogger('fda')
+    LOGGER.addHandler(logging.FileHandler(args.log, 'a'))
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
     
-    
-    restart_url = None
-    if os.path.exists('restart_url.txt') and args.restart:
-        LOGGER.debug('restart mode')          
-        with open('restart_url.txt') as fd:
-            restart_url = fd.readline()
-            LOGGER.debug(f'Next url is {restart_url}')
-            
     if not os.path.exists(PDF_FOLDER):
         LOGGER.debug('Creating main folder')
         os.mkdir(PDF_FOLDER)
@@ -122,23 +117,16 @@ def main():
             sys.exit(0)
         skip_count = int(redisHandle.get(skip_count_key))   
         response = requests.get(f'{OFDA_DEVICE + OFDA_510K + SEARCH  + HAS_SUMMARY}&limit={limit}&skip={skip_count}')
-        redisHandle.incrby(skip_count_key, limit)
+  
     
         hits = response.json()['results']
-
-        if ('link' in 'https://api.fda.gov/device/510k.json?search=statement_or_summary%3DSummary&limit=50&skip=0&search_after=0%3D-N0tbIUBMAeqG3hVbMy_'):
-            match = re.search("\<(.*)\>", 'https://api.fda.gov/device/510k.json?search=statement_or_summary%3DSummary&limit=50&skip=0&search_after=0%3D-N0tbIUBMAeqG3hVbMy_')
-            if match:
-                link = match.groups()[0]
-                with open('restart_url.txt', 'w') as fd:
-                    fd.write(link)
-                restart_url = link
             
         out_file = (args.output if args.output != 'stdout' else '-').strip()
         
         for hit in hits:   
             with smart_open(out_file, append=args.append, buffering=1) as hitTextOutput:
                 k_number = hit['k_number']
+                yearFolder = f'Submit_Year_{getYear(k_number)}'
                 pdf_type = hit.get('statement_or_summary', 'missing')
                 if pdf_type !='missing':
                     r_510K = requests.get(f'{BASE_510K_URL}{k_number}')
@@ -151,7 +139,10 @@ def main():
                     if pdf_url == "":
                         continue
                     else:    
-                        dataPath = os.path.join(PDF_FOLDER,k_number)
+                        yearPath = os.path.join(PDF_FOLDER, yearFolder)
+                        if not os.path.exists(yearPath):
+                            os.mkdir(yearPath)
+                        dataPath = os.path.join(yearPath,k_number)
                         if not os.path.exists(dataPath):        
                             os.mkdir(dataPath)
                         # metadata file
@@ -202,7 +193,7 @@ def main():
                                     ocrOutput.write(text)
                                     
                         end = time.time()
-                        print(f'File {k_number} {len(pdf_pages)} pages, processing time is {(end - start):.0f} seconds')
+                        LOGGER.info(f'File {k_number} {len(pdf_pages)} pages, processing time is {(end - start):.0f} seconds')
                         
                         # use fuzz package to search for terms in the list and deal with incorrect OCR
                         isFileHeaderOutput = False
@@ -237,6 +228,7 @@ def main():
                                 all510KsFH.write(f'Device Name:  {device_name}\n')
                                 all510KsFH.write(f'Advisory Committee ({advisory_committee}): {advisory_committee_desc}')
                                 all510KsFH.write(json.dumps(hit,indent=4))
+        redisHandle.incrby(skip_count_key, limit)
                     
 
 if __name__ == '__main__':
